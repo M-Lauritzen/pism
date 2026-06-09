@@ -1,8 +1,19 @@
 .. default-role:: literal
 
-===========================
-Changes since v2.3.2
+Changes since v2.3.0
+====================
 
+- Fix a bug in the code implementing `energy.model` "none": it failed to preserve enthalpy
+  set during initialization.
+- Update PnetCDF version to 1.14.1 to support GCC 15 and newer.
+- Add an Ubuntu-based container with MPICH (for testing)
+- Split `docker/ubuntu-intel-oneapi` into `docker/pism` and `docker/pism/base` to avoid
+  re-building all prerequisites every time we update the PISM container.
+- Add support for regridding from tiny grids, i.e. grids too small to be distributed
+  across `N` MPI processes (assuming that PISM was started using `mpiexec -n N pism ...`).
+- Add `pism_ismip7_writer`: an asynchronous writer that splits "spatial" output files,
+  writing one variable per file as requested by ISMIP7 and automatically interpolating
+  onto an ISMIP7-Greenland grid.
 - Add a top-level `pyproject.toml` so PISM can be built and installed via
   `pip install --no-build-isolation .` using scikit-build-core. This installs the
   `pism` CLI, `libpism`, and the `PISM` and `siple` Python packages into the active
@@ -33,10 +44,16 @@ Changes since v2.3.2
    
 - To add CMake build options, pass --config-settings repeatedly::
     pip install --no-build-isolation . \
-    -C cmake.define.Pism_DEBUG=ON \
     -C cmake.define.Pism_USE_PROJ=ON \
-    -C cmake.define.Pism_USE_YAC=ON \
-    -C cmake.build-type=Debug 
+    -C cmake.define.Pism_USE_YAC=ON
+
+- Add a Huber-loss option for the inversion misfit functional, selectable with
+  `-inv_state_func huber`. It penalizes velocity residuals quadratically below a
+  threshold (`inverse.huber.delta`, default 100 m/year) and linearly above it, so
+  isolated outliers in the observed velocity cannot dominate the descent direction.
+  Implemented as `IPHuberMisfit2V` and wired into the TAO Tikhonov inversion path
+  (`tikhonov_lmvm`, `tikhonov_blmvm`); it is not compatible with the Gauss-Newton
+  SSA solver, which requires an inner-product functional.
 
 Changes from 2.3.0 to 2.3.1
 ===========================

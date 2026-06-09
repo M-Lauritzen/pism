@@ -168,13 +168,9 @@ def download_from_s3(s3_uri: str, dest: str | Path) -> Path:
     return dest
 
 
-x_min = -199925
-x_max = -100025
-y_min = -2314025
-y_max = -2224025
 
 x_min = -199925 + 4500
-x_max = -100025 - 9000
+x_max = -50025 - 9000
 y_min = -2314025 + 4500
 y_max = -2224025 - 4500
 
@@ -204,6 +200,26 @@ if not Path(regrid_file).exists():
 
 regrid = xr.open_dataset(regrid_file)
 regrid = regrid.sel({"x": slice(x_min - 1500, x_max + 1500), "y": slice(y_min - 1500, y_max + 1500)})
+
+x = regrid["x"].values
+y = regrid["y"].values
+
+# True for cells outside the active model domain (i.e., in the 1500m
+# buffer we tacked onto each side via .sel above).
+in_x_band = (x < x_min) | (x > x_max)        # shape (nx,)
+in_y_band = (y < y_min) | (y > y_max)        # shape (ny,)
+
+# 2D mask, (y, x) order to match PISM conventions: 1 in the buffer,
+# 0 in the active interior.
+no_model = np.zeros((len(y), len(x)), dtype=np.int8)
+no_model[in_y_band, :] = 1
+no_model[:, in_x_band] = 1
+
+regrid["no_model_mask"] = (("y", "x"), no_model, {
+    "long_name": "regional no-model boundary mask "
+    "(1 = held fixed at boundary state, 0 = active interior)",
+    "units": "1",
+})
 regrid.to_netcdf("state_jako.nc")
     
 basins = gpd.read_file(outline_local).to_crs(crs)
@@ -224,9 +240,14 @@ for c, axis, stdname in (("x", "X", "projection_x_coordinate"), ("y", "Y", "proj
     }
     if c in obs_jib.coords:
         obs_jib[c].attrs.update(attrs)
-zeta_mask = obs_jib["bed"].rio.clip(jib.geometry, drop=False)
-obs_jib["zeta_fixed_mask"] = xr.where(zeta_mask.isnull(), 1, 0).fillna(0).astype(int)
 
+zeta_mask = obs_jib["bed"].rio.clip(jib.geometry, drop=False)
+outside_geometry = zeta_mask.isnull()
+no_ice = (obs_jib["thickness"] == 0) | obs_jib["bed"].isnull()
+obs_jib["zeta_fixed_mask"] = (
+    xr.where(outside_geometry | no_ice, 1, 0).fillna(0).astype(int)
+)
+  
 def fix_xy_attrs(ds):
     """Ensure x/y coordinates have proper CF attributes and float64 dtype."""
     for c, axis, stdname in (("x", "X", "projection_x_coordinate"),
