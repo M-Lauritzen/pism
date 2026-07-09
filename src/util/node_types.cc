@@ -20,9 +20,9 @@
 #include "pism/util/node_types.hh"
 
 #include "pism/util/array/Scalar.hh"
-#include "pism/util/array/Scalar.hh"
 #include "pism/util/Grid.hh"
 #include "pism/util/error_handling.hh"
+#include "pism/util/pism_utilities.hh" // GlobalSum
 
 namespace pism {
 
@@ -116,6 +116,55 @@ void compute_node_types(const array::Scalar1 &ice_thickness,
   loop.check();
 
   result.update_ghosts();
+
+  // ---- Orphan-node regularization (needed for SSAFEM + CFBC) --------------------------------
+  // The FEM assembly SKIPS an element whenever >= 2 of its 4 nodes are exterior (see
+  // fem::element_type() -> ELEMENT_EXTERIOR). A non-exterior node whose four surrounding elements
+  // are ALL skipped therefore receives no stiffness contribution and, unless it happens to carry a
+  // Dirichlet condition, becomes a zero row -> a singular Jacobian. This occurs on ragged,
+  // observation-derived margins (isolated cells, one-cell protrusions, diagonal-only strands) and
+  // is fatal for the SSAFEM tau_c inversion with CFBC. Reclassify such "orphan" nodes as exterior
+  // so the existing CFBC machinery pins them with a homogeneous Dirichlet condition. Iterate to a
+  // fixed point (demoting one node can orphan a neighbour). The pass only ever turns nodes OFF
+  // (monotone -> terminates) and, being expressed in node types, is exactly consistent with the
+  // element-skip rule used during assembly.
+  {
+    auto is_exterior = [&result](int i, int j) {
+      return static_cast<int>(result(i, j) == NODE_EXTERIOR);
+    };
+
+    bool changed = true;
+    while (changed) {
+      int n_demoted = 0;
+
+      for (auto p : grid->points()) {
+        const int i = p.i(), j = p.j();
+
+        if (result(i, j) == NODE_EXTERIOR) {
+          continue;
+        }
+
+        // Count exterior nodes in each of the four elements sharing node (i, j). Node layout:
+        // N=(i,j+1) S=(i,j-1) E=(i+1,j) W=(i-1,j) NE=(i+1,j+1) NW=(i-1,j+1) SE=(i+1,j-1) SW=(i-1,j-1).
+        const int
+          ne = is_exterior(i, j) + is_exterior(i + 1, j) + is_exterior(i + 1, j + 1) + is_exterior(i, j + 1),
+          nw = is_exterior(i, j) + is_exterior(i, j + 1) + is_exterior(i - 1, j + 1) + is_exterior(i - 1, j),
+          sw = is_exterior(i, j) + is_exterior(i - 1, j) + is_exterior(i - 1, j - 1) + is_exterior(i, j - 1),
+          se = is_exterior(i, j) + is_exterior(i, j - 1) + is_exterior(i + 1, j - 1) + is_exterior(i + 1, j);
+
+        if (ne >= 2 and nw >= 2 and sw >= 2 and se >= 2) {
+          // all four surrounding elements are skipped by the assembly: this node is an orphan
+          result(i, j) = NODE_EXTERIOR;
+          n_demoted += 1;
+        }
+      }
+
+      // Make this iteration's demotions visible in ghosts, then check (across all ranks) whether to
+      // continue.
+      result.update_ghosts();
+      changed = GlobalSum(grid->com, static_cast<double>(n_demoted)) > 0.5;
+    }
+  }
 }
 
 } // end of namespace pism
