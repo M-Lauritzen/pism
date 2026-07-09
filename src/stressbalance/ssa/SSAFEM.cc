@@ -699,15 +699,20 @@ void SSAFEM::cache_residual_cfbc(const Inputs &inputs) {
             double dP = H * (P_ice - P_water);
             // FIXME: implement melange pressure forcing
 
+            // Only a MARINE front (ice terminating in ocean) carries the calving-front stress. At a
+            // land margin -- fjord walls, nunataks, land-terminating ice, grounded ice-free bedrock
+            // above sea level -- there is no ocean, so the pressure difference must be zero.
+            // Implements the long-standing FIXME below. Without it the full ice-overburden pressure
+            // 1/2 rho_i g H^2 is applied as a spurious outward stress at every land margin, which (on
+            // static observed geometry) drives runaway margin velocities and destabilises the SSAFEM
+            // tau_c inversion. Criterion: the margin bed is at or above sea level => not marine.
+            if (bed >= sea_level) {
+              dP = 0.0;
+            }
+
             // This integral contributes to the residual at 2 nodes (the ones incident to the
             // current side). This is is written in a way that allows *adding* (... += ...) the
             // boundary contribution in the residual computation.
-            //
-            // FIXME: I need to include the special case corresponding to ice margins next
-            // to fjord walls, nunataks, etc. In this case dP == 0.
-            //
-            // FIXME: set pressure difference to zero at grounded locations at domain
-            // boundaries.
             I[n0] += W * (- psi[0] * dP) * E->normal(s);
             I[n1] += W * (- psi[1] * dP) * E->normal(s);
           } // q-loop
