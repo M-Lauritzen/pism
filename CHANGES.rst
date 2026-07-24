@@ -3,6 +3,12 @@
 Changes since v2.3.0
 ====================
 
+- Add an optional Bueler-Brown-style weighted SIA+SSA hybrid for mass transport (config flag
+  `stress_balance.sia_ssa_flux_weighting.enabled`, option `-sia_ssa_flux_weighting`, default off).
+  When on, the mass-continuity step blends `f*(SIA diffusive flux) + (1-f)*(SSA advective flux)` with
+  `f = 1 - (2/pi)*atan((|u_SSA|/reference_velocity)^2)` instead of adding them, restoring the pre-2011
+  `-super` behavior: full SIA shear in the slow interior, no SIA at fast/margin cells. Avoids the
+  SSA-as-sliding-law double-count at outlets and the SIA overshoot at steep margins.
 - Install a `pismi` executable from a CMake build so the inverse modeling driver can be run
   as `pismi ...` regardless of whether PISM was installed via CMake or `pip install .`
   (previously a CMake install required `python -m PISM.pismi ...`).

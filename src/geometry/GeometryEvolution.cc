@@ -582,6 +582,16 @@ void GeometryEvolution::compute_interface_fluxes(const array::CellType1 &cell_ty
 
   array::AccessScope list{ &cell_type, &velocity, &ice_thickness, &diffusive_flux, &output };
 
+  // Optional Bueler-Brown-style WEIGHTED SIA+SSA hybrid (restores the old PISM -super/f(|v|) behavior):
+  // blend f*(SIA diffusive flux) + (1-f)*(SSA advective flux) with
+  //   f = 1 - (2/pi) * atan( (|u_SSA| / v_ref)^2 ),
+  // instead of ADDING them. f->1 (full SIA shear) in the slow interior, f->0 (no SIA) at fast/margin
+  // cells -> no double-count at outlets and no spurious SIA overshoot at steep margins. Default OFF
+  // (the modern additive SSA-as-sliding-law is unchanged). v_ref ~ 100 m/a = pseudo-plastic u_threshold.
+  const bool   sia_ssa_weight = m_config->get_flag("stress_balance.sia_ssa_flux_weighting.enabled");
+  const double v_ref =
+      m_config->get_number("stress_balance.sia_ssa_flux_weighting.reference_velocity", "meter / second");
+
   ParallelSection loop(m_grid->com);
   try {
     // compute advective fluxes and put them in output
@@ -617,9 +627,10 @@ void GeometryEvolution::compute_interface_fluxes(const array::CellType1 &cell_ty
       } // end of the loop over neighbors (n)
     }
 
-    // limit the advective flux and add the diffusive flux to it to get the total
+    // limit the advective flux and add (or, if enabled, f(|v|)-blend) the diffusive flux to it
     for (auto p : m_grid->points()) {
       const int i = p.i(), j = p.j(), M = cell_type.as_int(i, j);
+      const Vector2d &V = velocity(i, j);
 
       for (int n = 0; n < 2; ++n) {
         const int oi = 1 - n,  // offset in the i direction
@@ -633,7 +644,17 @@ void GeometryEvolution::compute_interface_fluxes(const array::CellType1 &cell_ty
         const double Q_diffusive = limit_diffusive_flux(M, M_n, diffusive_flux(i, j, n)),
                      Q_advective = limit_advective_flux(M, M_n, output(i, j, n));
 
-        output(i, j, n) = Q_diffusive + Q_advective;
+        if (sia_ssa_weight) {
+          // staggered SSA speed at this interface (recomputed to match the advective-flux loop)
+          const Vector2d &V_n = velocity(i_n, j_n);
+          int W = static_cast<int>(icy(M)), W_n = static_cast<int>(icy(M_n));
+          auto   v_stag = (W * V + W_n * V_n) / std::max(W + W_n, 1);
+          double speed  = std::sqrt(v_stag.u * v_stag.u + v_stag.v * v_stag.v);
+          double f      = 1.0 - (2.0 / M_PI) * std::atan(std::pow(speed / v_ref, 2.0));
+          output(i, j, n) = f * Q_diffusive + (1.0 - f) * Q_advective;
+        } else {
+          output(i, j, n) = Q_diffusive + Q_advective;
+        }
       } // end of the loop over n
     }
 
