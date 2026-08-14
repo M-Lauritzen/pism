@@ -30,6 +30,7 @@
 #include "pism/util/pism_utilities.hh"
 #include "pism/util/array/CellType.hh"
 #include "pism/rheology/FlowLaw.hh"
+#include "pism/stressbalance/sia_ssa_weight.hh"
 #include "pism/rheology/FlowLawFactory.hh"
 #include "pism/util/Context.hh"
 
@@ -41,6 +42,7 @@ DiagnosticList StressBalance::spatial_diagnostics_impl() const {
     {"bfrict",              Diagnostic::Ptr(new PSB_bfrict(this))},
     {"velbar_mag",          Diagnostic::Ptr(new PSB_velbar_mag(this))},
     {"flux",                Diagnostic::Ptr(new PSB_flux(this))},
+    {"sia_ssa_weight",      Diagnostic::Ptr(new PSB_sia_ssa_weight(this))},
     {"flux_mag",            Diagnostic::Ptr(new PSB_flux_mag(this))},
     {"velbase_mag",         Diagnostic::Ptr(new PSB_velbase_mag(this))},
     {"velsurf_mag",         Diagnostic::Ptr(new PSB_velsurf_mag(this))},
@@ -158,6 +160,46 @@ std::shared_ptr<array::Array> PSB_velbar_mag::compute_impl() const {
 
   // mask out ice-free areas:
   apply_mask(*thickness, to_internal(m_fill_value), *result);
+
+  return result;
+}
+
+
+PSB_sia_ssa_weight::PSB_sia_ssa_weight(const StressBalance *m)
+  : Diag<StressBalance>(m) {
+
+  m_vars = { { m_sys, "sia_ssa_weight", *m_grid } };
+
+  m_vars[0]
+      .long_name("Bueler-Brown weight f(|u_SSA|) applied to the SIA contribution"
+                 " in the weighted SIA+SSA hybrid")
+      .units("1");
+
+  m_vars[0]["valid_min"] = { 0.0 };
+  m_vars[0]["valid_max"] = { 1.0 };
+  m_vars[0]["comment"] =
+      "f = 1 - (2/pi)*atan((|u_SSA|/u_ref)^2). The SIA contribution is scaled by f and the"
+      " SSA contribution by (1-f). f -> 1 in the slow interior (full SIA shear), f -> 0 at"
+      " fast sliding cells (SIA removed). Reported regardless of whether"
+      " stress_balance.sia_ssa_flux_weighting.enabled is set, so an additive run can be"
+      " compared against the weight it would have used.";
+}
+
+std::shared_ptr<array::Array> PSB_sia_ssa_weight::compute_impl() const {
+  auto result = allocate<array::Scalar>("sia_ssa_weight");
+
+  const double v_ref =
+      m_config->get_number("stress_balance.sia_ssa_flux_weighting.reference_velocity",
+                           "meter / second");
+
+  const array::Vector &sliding_velocity = model->advective_velocity();
+
+  array::AccessScope list{ &sliding_velocity, result.get() };
+
+  for (auto p : m_grid->points()) {
+    const int i = p.i(), j = p.j();
+    (*result)(i, j) = sia_ssa_velocity_weight(sliding_velocity(i, j).magnitude(), v_ref);
+  }
 
   return result;
 }

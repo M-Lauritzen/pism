@@ -25,6 +25,7 @@
 #include "pism/rheology/FlowLawFactory.hh"
 #include "pism/rheology/grain_size_vostok.hh"
 #include "pism/stressbalance/StressBalance.hh"
+#include "pism/stressbalance/sia_ssa_weight.hh"
 #include "pism/util/EnthalpyConverter.hh"
 #include "pism/util/Grid.hh"
 #include "pism/util/Profiling.hh"
@@ -873,6 +874,17 @@ void SIAFD::compute_3d_horizontal_velocity(const Geometry &geometry, const array
 
   const unsigned int Mz = m_grid->Mz();
 
+  // Optional weighted SIA+SSA hybrid: blend f*(SIA shear) + (1-f)*(SSA sliding) instead of
+  // adding them, matching what GeometryEvolution::compute_interface_fluxes does to the mass
+  // flux. Enabling the weighting has to change the REPORTED velocity too -- otherwise
+  // velsurf/velbar/flux would describe an additive hybrid the model is not actually using,
+  // and the movies and the ISMIP7 surface-velocity output would disagree with the mass
+  // transport. Default OFF => strictly the additive SSA-as-sliding-law, unchanged.
+  const bool sia_ssa_weight = m_config->get_flag("stress_balance.sia_ssa_flux_weighting.enabled");
+  const double v_ref =
+      m_config->get_number("stress_balance.sia_ssa_flux_weighting.reference_velocity",
+                           "meter / second");
+
   for (auto p : m_grid->points()) {
     const int i = p.i(), j = p.j();
 
@@ -899,18 +911,30 @@ void SIAFD::compute_3d_horizontal_velocity(const Geometry &geometry, const array
       sliding_velocity_u = sliding_velocity(i, j).u,
       sliding_velocity_v = sliding_velocity(i, j).v;
 
+    // f scales the SIA shear, (1 - f) the SSA sliding. Both are 1 when the weighting is
+    // disabled, which recovers the additive hybrid exactly. f uses the cell-centred SSA
+    // speed here; the flux weighting uses the staggered speed at each interface, since
+    // that is where the flux lives.
+    double w_sia = 1.0, w_ssa = 1.0;
+    if (sia_ssa_weight) {
+      double ssa_speed = std::sqrt(sliding_velocity_u * sliding_velocity_u +
+                                   sliding_velocity_v * sliding_velocity_v);
+      w_sia = sia_ssa_velocity_weight(ssa_speed, v_ref);
+      w_ssa = 1.0 - w_sia;
+    }
+
     double
       *u_ij = u_out.get_column(i, j),
       *v_ij = v_out.get_column(i, j);
 
     // split into two loops to encourage auto-vectorization
     for (unsigned int k = 0; k < Mz; ++k) {
-      u_ij[k] = sliding_velocity_u - 0.25 * (I_e[k] * h_x_e + I_w[k] * h_x_w +
-                                             I_n[k] * h_x_n + I_s[k] * h_x_s);
+      u_ij[k] = w_ssa * sliding_velocity_u - w_sia * 0.25 * (I_e[k] * h_x_e + I_w[k] * h_x_w +
+                                                             I_n[k] * h_x_n + I_s[k] * h_x_s);
     }
     for (unsigned int k = 0; k < Mz; ++k) {
-      v_ij[k] = sliding_velocity_v - 0.25 * (I_e[k] * h_y_e + I_w[k] * h_y_w +
-                                             I_n[k] * h_y_n + I_s[k] * h_y_s);
+      v_ij[k] = w_ssa * sliding_velocity_v - w_sia * 0.25 * (I_e[k] * h_y_e + I_w[k] * h_y_w +
+                                                             I_n[k] * h_y_n + I_s[k] * h_y_s);
     }
   }
 

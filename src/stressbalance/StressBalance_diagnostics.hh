@@ -54,6 +54,16 @@ protected:
   virtual std::shared_ptr<array::Array> compute_impl() const;
 };
 
+//! \brief Computes sia_ssa_weight, the Bueler-Brown weight f(|u_SSA|) applied to the SIA
+//! contribution by the optional weighted SIA+SSA hybrid.
+class PSB_sia_ssa_weight : public Diag<StressBalance>
+{
+public:
+  PSB_sia_ssa_weight(const StressBalance *m);
+protected:
+  virtual std::shared_ptr<array::Array> compute_impl() const;
+};
+
 //! \brief Computes flux_mag, the magnitude of vertically-integrated horizontal
 //! flux of ice.
 class PSB_flux_mag : public Diag<StressBalance>

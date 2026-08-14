@@ -27,6 +27,7 @@
 #include "pism/util/array/Vector.hh"
 
 #include "pism/geometry/part_grid_threshold_thickness.hh"
+#include "pism/stressbalance/sia_ssa_weight.hh"
 #include "pism/util/Context.hh"
 #include "pism/util/Logger.hh"
 #include "pism/util/Profiling.hh"
@@ -650,7 +651,7 @@ void GeometryEvolution::compute_interface_fluxes(const array::CellType1 &cell_ty
           int W = static_cast<int>(icy(M)), W_n = static_cast<int>(icy(M_n));
           auto   v_stag = (W * V + W_n * V_n) / std::max(W + W_n, 1);
           double speed  = std::sqrt(v_stag.u * v_stag.u + v_stag.v * v_stag.v);
-          double f      = 1.0 - (2.0 / M_PI) * std::atan(std::pow(speed / v_ref, 2.0));
+          double f      = stressbalance::sia_ssa_velocity_weight(speed, v_ref);
           output(i, j, n) = f * Q_diffusive + (1.0 - f) * Q_advective;
         } else {
           output(i, j, n) = Q_diffusive + Q_advective;

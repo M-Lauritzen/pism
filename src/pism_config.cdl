@@ -2235,7 +2235,7 @@ netcdf pism_config {
     pism_config:stress_balance.sia.surface_gradient_method_type = "keyword";
 
     pism_config:stress_balance.sia_ssa_flux_weighting.enabled = "no";
-    pism_config:stress_balance.sia_ssa_flux_weighting.enabled_doc = "If yes, combine the SIA (diffusive) and SSA (advective) mass fluxes in the mass-continuity step as f*SIA + (1-f)*SSA with the Bueler-Brown velocity weight f(|u_SSA|) = 1 - (2/pi)*atan((|u_SSA|/reference_velocity)^2), instead of adding them. Restores the pre-2011 weighted -super hybrid: f->1 (full SIA shear) in the slow interior, f->0 (SIA removed) at fast/margin cells, avoiding the SSA-as-sliding-law double-count at outlets and the SIA overshoot at steep margins. Affects mass transport only, not the reported 3D velocity.";
+    pism_config:stress_balance.sia_ssa_flux_weighting.enabled_doc = "If yes, combine the SIA (diffusive) and SSA (advective) mass fluxes in the mass-continuity step as f*SIA + (1-f)*SSA with the Bueler-Brown velocity weight f(|u_SSA|) = 1 - (2/pi)*atan((|u_SSA|/reference_velocity)^2), instead of adding them. Restores the pre-2011 weighted -super hybrid: f->1 (full SIA shear) in the slow interior, f->0 (SIA removed) at fast/margin cells, avoiding the SSA-as-sliding-law double-count at outlets and the SIA overshoot at steep margins. The same weight is applied to the reported 3D velocity (SIAFD::compute_3d_horizontal_velocity), so velsurf/velbar/flux describe the hybrid the model actually uses rather than an additive one. The diagnostic sia_ssa_weight reports f itself.";
     pism_config:stress_balance.sia_ssa_flux_weighting.enabled_option = "sia_ssa_flux_weighting";
     pism_config:stress_balance.sia_ssa_flux_weighting.enabled_type = "flag";
 
