@@ -2578,6 +2578,10 @@ netcdf pism_config {
 
     pism_config:surface.elevation_change.smb.lapse_rate = 0;
     pism_config:surface.elevation_change.smb.lapse_rate_doc = "Lapse rate for the surface mass balance.";
+    pism_config:surface.elevation_change.smb.lapse_rate_file = "";
+    pism_config:surface.elevation_change.smb.lapse_rate_file_doc = "Name of the file containing `smb_lapse_rate`, a spatially-varying (and possibly time-dependent) SMB lapse rate in kg m-2 s-1 m-1. If set, overrides the scalar :config:`surface.elevation_change.smb.lapse_rate`. Intended for the ISMIP7 SMB-elevation feedback, which prescribes a per-cell vertical gradient (`dmrrodz`, runoff change with surface elevation) rather than a single number. Sign convention matches the scalar: the correction applied is SMB -= rate * (surface - reference_surface), so the provided runoff gradient is used as is.";
+    pism_config:surface.elevation_change.smb.lapse_rate_file_option = "smb_lapse_rate_file";
+    pism_config:surface.elevation_change.smb.lapse_rate_file_type = "string";
     pism_config:surface.elevation_change.smb.lapse_rate_option = "smb_lapse_rate";
     pism_config:surface.elevation_change.smb.lapse_rate_type = "number";
     pism_config:surface.elevation_change.smb.lapse_rate_units = "(m / year) / km";

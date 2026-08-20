@@ -42,4 +42,24 @@ void lapse_rate_correction(const array::Scalar &surface,
   }
 }
 
+void lapse_rate_correction(const array::Scalar &surface,
+                           const array::Scalar &reference_surface,
+                           const array::Scalar &lapse_rate,
+                           array::Scalar &result) {
+  auto grid = result.grid();
+
+  array::AccessScope list{&surface, &reference_surface, &lapse_rate, &result};
+
+  for (auto p : grid->points()) {
+    const int i = p.i(), j = p.j();
+
+    double gamma = lapse_rate(i, j);
+    if (not std::isfinite(gamma)) {
+      continue;                 // no gradient supplied here: leave SMB untouched
+    }
+
+    result(i, j) -= gamma * (surface(i, j) - reference_surface(i, j));
+  }
+}
+
 } // end of namespace pism

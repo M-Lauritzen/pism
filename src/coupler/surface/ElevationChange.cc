@@ -37,6 +37,22 @@ ElevationChange::ElevationChange(std::shared_ptr<const Grid> g, std::shared_ptr<
     m_smb_lapse_rate *= m_config->get_number("constants.ice.density");
 
     m_smb_exp_factor = m_config->get_number("surface.elevation_change.smb.exp_factor");
+
+    // Optional spatially-varying (and time-dependent) lapse rate. Overrides the scalar
+    // above. Motivated by ISMIP7, whose SMB-elevation feedback prescribes a per-cell
+    // vertical gradient (`dmrrodz`) instead of one number; the provided field is already
+    // in kg m-2 s-1 m-1, i.e. the same internal units as the converted scalar.
+    auto lr_filename = m_config->get_string("surface.elevation_change.smb.lapse_rate_file");
+    if (not lr_filename.empty()) {
+      unsigned int buffer_size = m_config->get_number("input.forcing.buffer_size");
+      File lr_file(m_grid->com, lr_filename, io::PISM_NETCDF3, io::PISM_READONLY);
+      m_smb_lapse_rate_field = std::make_shared<array::Forcing>(m_grid, lr_file, "smb_lapse_rate",
+                                                                "", buffer_size, false, LINEAR);
+      m_smb_lapse_rate_field->metadata(0)
+          .long_name("spatially-varying SMB lapse rate")
+          .units("kg m^-2 s^-1 m^-1");
+      m_smb_lapse_rate_field->init(lr_filename, false);
+    }
   }
 
   {
@@ -102,6 +118,10 @@ void ElevationChange::update_impl(const Geometry &geometry, double t, double dt)
   m_input_model->update(geometry, t, dt);
 
   m_reference_surface->update(t, dt);
+  if (m_smb_lapse_rate_field) {
+    m_smb_lapse_rate_field->update(t, dt);
+    m_smb_lapse_rate_field->average(t, dt);
+  }
   m_reference_surface->interp(t + 0.5*dt);
 
   const array::Scalar &surface = geometry.ice_surface_elevation;
@@ -129,8 +149,13 @@ void ElevationChange::update_impl(const Geometry &geometry, double t, double dt)
   default:
   case SHIFT:
     {
-      lapse_rate_correction(surface, *m_reference_surface,
-                            m_smb_lapse_rate, *m_mass_flux);
+      if (m_smb_lapse_rate_field) {
+        lapse_rate_correction(surface, *m_reference_surface,
+                              *m_smb_lapse_rate_field, *m_mass_flux);
+      } else {
+        lapse_rate_correction(surface, *m_reference_surface,
+                              m_smb_lapse_rate, *m_mass_flux);
+      }
     }
     break;
   }

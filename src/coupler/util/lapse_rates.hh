@@ -29,6 +29,18 @@ void lapse_rate_correction(const array::Scalar &surface,
                            double lapse_rate,
                            array::Scalar &result);
 
+/*!
+ * Same, but with a SPATIALLY VARYING (and possibly time-dependent) lapse rate.
+ *
+ * Needed for the ISMIP7 SMB-elevation feedback, which prescribes a per-cell,
+ * time-varying vertical gradient (`dmrrodz`, runoff change with surface elevation)
+ * rather than a single number.
+ */
+void lapse_rate_correction(const array::Scalar &surface,
+                           const array::Scalar &reference_surface,
+                           const array::Scalar &lapse_rate,
+                           array::Scalar &result);
+
 } // end of namespace pism
 
 #endif /* LAPSE_RATES_H */

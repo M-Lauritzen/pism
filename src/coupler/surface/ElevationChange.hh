@@ -48,6 +48,8 @@ protected:
   double m_temp_lapse_rate;
 
   std::shared_ptr<array::Forcing> m_reference_surface;
+  //! optional spatially-varying SMB lapse rate (kg m-2 s-1 m-1); overrides the scalar
+  std::shared_ptr<array::Forcing> m_smb_lapse_rate_field;
 
   std::shared_ptr<array::Scalar> m_mass_flux;
   std::shared_ptr<array::Scalar> m_temperature;
